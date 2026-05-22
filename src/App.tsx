@@ -2,7 +2,17 @@ import { useMemo, useState } from 'react';
 
 type Card = { rank: number; suit: string; code: string };
 
-type Result = { wins: number; ties: number; losses: number; total: number; winRate: number; tieRate: number; lossRate: number };
+type Result = {
+  wins: number;
+  ties: number;
+  losses: number;
+  total: number;
+  winRate: number;
+  tieRate: number;
+  lossRate: number;
+  categoryCounts: Record<number, number>;
+  categoryProbabilities: Record<number, number>;
+};
 
 type CardInput = { rank: string; suit: string };
 
@@ -10,8 +20,35 @@ const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
 const suits = ['h', 'd', 'c', 's'];
 const suitLabels: Record<string, string> = { h: '♥️', d: '♦️', c: '♣️', s: '♠️' };
 const rankValue: Record<string, number> = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, T: 10, J: 11, Q: 12, K: 13, A: 14 };
+const handCategoryNames = ['高牌', '一对', '两对', '三条', '顺子', '同花', '葫芦', '四条', '同花顺'];
 
 const cardLabels = ['手牌 1', '手牌 2', 'Flop 1', 'Flop 2', 'Flop 3', 'Turn', 'River'];
+const openHighWinRateHands = [
+  { hand: 'AA', rate: 85.2 },
+  { hand: 'KK', rate: 82.1 },
+  { hand: 'QQ', rate: 79.8 },
+  { hand: 'JJ', rate: 77.6 },
+  { hand: 'TT', rate: 75.2 },
+  { hand: '99', rate: 72.9 },
+  { hand: '88', rate: 70.7 },
+  { hand: 'AKs', rate: 67.5 },
+  { hand: 'AQs', rate: 66.1 },
+  { hand: 'AJs', rate: 64.2 },
+  { hand: 'KQs', rate: 63.0 },
+  { hand: 'ATs', rate: 61.4 },
+  { hand: 'KJs', rate: 60.0 },
+  { hand: 'QJs', rate: 58.6 },
+  { hand: 'AJo', rate: 58.6 },
+  { hand: 'KQo', rate: 56.6 },
+];
+const pocketPairWinRates = [
+  { hand: '77', rate: 67.9 },
+  { hand: '66', rate: 65.2 },
+  { hand: '55', rate: 62.5 },
+  { hand: '44', rate: 59.9 },
+  { hand: '33', rate: 57.5 },
+  { hand: '22', rate: 55.6 },
+];
 
 const buildDeck = (used: Card[]) => {
   const deck: Card[] = [];
@@ -34,6 +71,65 @@ const buildCard = (rank: string, suit: string): Card | null => {
   const code = `${normalizedRank}${normalizedSuit}`;
   if (!rankValue[normalizedRank] || !suits.includes(normalizedSuit)) return null;
   return { rank: rankValue[normalizedRank], suit: normalizedSuit, code };
+};
+
+const getHandCategory = (cards: Card[]) => {
+  const sorted = [...cards].sort((a, b) => b.rank - a.rank);
+  const rankCounts = sorted.reduce<Record<number, number>>((acc, card) => {
+    acc[card.rank] = (acc[card.rank] || 0) + 1;
+    return acc;
+  }, {});
+  const counts = Object.entries(rankCounts)
+    .map(([rank, count]) => ({ rank: Number(rank), count }))
+    .sort((a, b) => b.count - a.count || b.rank - a.rank);
+  const isFlush = suits.some((suit) => sorted.filter((card) => card.suit === suit).length >= 5);
+  const distinctRanks = Array.from(new Set(sorted.map((card) => card.rank)));
+
+  const isStraight = (() => {
+    const allRanks = [...distinctRanks];
+    if (allRanks[0] === 14) allRanks.push(1);
+    for (let i = 0; i <= allRanks.length - 5; i += 1) {
+      if (
+        allRanks[i] - 1 === allRanks[i + 1] &&
+        allRanks[i + 1] - 1 === allRanks[i + 2] &&
+        allRanks[i + 2] - 1 === allRanks[i + 3] &&
+        allRanks[i + 3] - 1 === allRanks[i + 4]
+      ) {
+        return true;
+      }
+    }
+    return false;
+  })();
+
+  const isStraightFlush = (() => {
+    for (const suit of suits) {
+      const suited = sorted.filter((card) => card.suit === suit);
+      if (suited.length < 5) continue;
+      const suitedRanks = Array.from(new Set(suited.map((card) => card.rank)));
+      if (suitedRanks[0] === 14) suitedRanks.push(1);
+      for (let i = 0; i <= suitedRanks.length - 5; i += 1) {
+        if (
+          suitedRanks[i] - 1 === suitedRanks[i + 1] &&
+          suitedRanks[i + 1] - 1 === suitedRanks[i + 2] &&
+          suitedRanks[i + 2] - 1 === suitedRanks[i + 3] &&
+          suitedRanks[i + 3] - 1 === suitedRanks[i + 4]
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  })();
+
+  if (isStraightFlush) return 8;
+  if (counts[0].count === 4) return 7;
+  if (counts[0].count === 3 && counts[1]?.count === 2) return 6;
+  if (isFlush) return 5;
+  if (isStraight) return 4;
+  if (counts[0].count === 3) return 3;
+  if (counts[0].count === 2 && counts[1]?.count === 2) return 2;
+  if (counts[0].count === 2) return 1;
+  return 0;
 };
 
 const getHandValue = (cards: Card[]) => {
@@ -130,7 +226,37 @@ const calculateResult = (hero: Card[], board: Card[]): Result => {
   const used = [...hero, ...board];
   const deck = buildDeck(used);
   const boardCount = board.length;
-  const result = { wins: 0, ties: 0, losses: 0, total: 0, winRate: 0, tieRate: 0, lossRate: 0 };
+  const result: Result = {
+    wins: 0,
+    ties: 0,
+    losses: 0,
+    total: 0,
+    winRate: 0,
+    tieRate: 0,
+    lossRate: 0,
+    categoryCounts: {
+      0: 0,
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+      6: 0,
+      7: 0,
+      8: 0,
+    },
+    categoryProbabilities: {
+      0: 0,
+      1: 0,
+      2: 0,
+      3: 0,
+      4: 0,
+      5: 0,
+      6: 0,
+      7: 0,
+      8: 0,
+    },
+  };
 
   if (deck.length < 2) return result;
 
@@ -139,6 +265,7 @@ const calculateResult = (hero: Card[], board: Card[]): Result => {
   };
 
   if (boardCount === 5) {
+    const heroCategory = getHandCategory([...hero, ...board]);
     for (let i = 0; i < deck.length - 1; i += 1) {
       for (let j = i + 1; j < deck.length; j += 1) {
         const opp = [deck[i], deck[j]];
@@ -150,6 +277,7 @@ const calculateResult = (hero: Card[], board: Card[]): Result => {
         result.total += 1;
       }
     }
+    result.categoryCounts[heroCategory] = result.total;
   } else {
     for (let i = 0; i < sampleRate; i += 1) {
       const remainingDeck = [...deck];
@@ -166,6 +294,8 @@ const calculateResult = (hero: Card[], board: Card[]): Result => {
       }
       const heroScore = evaluateBoard(hero, [...board, ...futureBoard]);
       const oppScore = evaluateBoard(opponent, [...board, ...futureBoard]);
+      const heroCategory = getHandCategory([...hero, ...board, ...futureBoard]);
+      result.categoryCounts[heroCategory] += 1;
       if (heroScore > oppScore) result.wins += 1;
       else if (heroScore < oppScore) result.losses += 1;
       else result.ties += 1;
@@ -176,6 +306,16 @@ const calculateResult = (hero: Card[], board: Card[]): Result => {
   result.winRate = result.total ? Number(((result.wins / result.total) * 100).toFixed(1)) : 0;
   result.tieRate = result.total ? Number(((result.ties / result.total) * 100).toFixed(1)) : 0;
   result.lossRate = result.total ? Number(((result.losses / result.total) * 100).toFixed(1)) : 0;
+
+  if (result.total) {
+    for (const category of Object.keys(result.categoryCounts)) {
+      const key = Number(category);
+      result.categoryProbabilities[key] = Number(
+        ((result.categoryCounts[key] / result.total) * 100).toFixed(1)
+      );
+    }
+  }
+
   return result;
 };
 
@@ -201,14 +341,6 @@ const App = () => {
     if (!inputValid) return null;
     return calculateResult(heroCards as Card[], boardCards.filter(Boolean) as Card[]);
   }, [heroInput, boardInput]);
-
-  const explain = result
-    ? result.winRate >= 60
-      ? '当前手牌强势，继续游戏价值较高。'
-      : result.winRate >= 40
-      ? '当前手牌有一定潜力，但仍需谨慎。'
-      : '当前手牌较弱，建议审慎决策。'
-    : '';
 
   const strategy = result
     ? result.winRate >= 65
@@ -254,6 +386,22 @@ const App = () => {
       </header>
 
       <div className="main-layout">
+        <section className="high-hands-panel">
+          <h2>高胜率</h2>
+          <ul>
+            {openHighWinRateHands.map(({ hand, rate }) => (
+              <li key={hand}>
+                {hand}: {rate}%
+              </li>
+            ))}
+            {pocketPairWinRates.map(({ hand, rate }) => (
+              <li key={hand}>
+                {hand}: {rate}%
+              </li>
+            ))}
+          </ul>
+        </section>
+
         <section className="card-inputs">
           <div className="input-group">
             <h2>手牌</h2>
@@ -392,7 +540,20 @@ const App = () => {
             </div>
           )}
 
-          {result && <div className="explanation"><p>{explain}</p></div>}
+          {result && (
+            <div className="category-panel">
+              <h3>各牌型概率</h3>
+              <ul>
+                {Object.entries(result.categoryProbabilities)
+                  .filter(([, value]) => value > 0)
+                  .map(([category, value]) => (
+                    <li key={category}>
+                      {handCategoryNames[Number(category)]}: {value}%
+                    </li>
+                  ))}
+              </ul>
+            </div>
+          )}
           {result && (
             <div className="strategy-panel">
               <h3>推荐策略</h3>
