@@ -178,7 +178,39 @@ label {
   border-color: rgba(255,255,255,0.12);
 }
 
-input[type="text"], input[type="tel"], input[type="number"], input[type="search"], input[type="email"], input[type="url"], input[type="password"], input {
+.rank-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.rank-btn {
+  border: none;
+  background: #1e293b;
+  color: #e2e8f0;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 150ms ease;
+  border: 1px solid #334155;
+}
+
+.rank-btn:hover {
+  background: #334155;
+  transform: translateY(-1px);
+}
+
+.rank-btn.active {
+  background: linear-gradient(180deg, #4f46e5, #4338ca);
+  color: #fff;
+  border-color: #6366f1;
+  box-shadow: 0 4px 12px rgba(79, 70, 229, 0.3);
+}
+
+input[type="text"], input[type="tel"], input[type="number"], input[type="search"], input[type="email"], input[type="url"], input[type="password"], input,
+select {
   width: 100%;
   padding: 12px 14px;
   border-radius: 14px;

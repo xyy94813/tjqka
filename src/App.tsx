@@ -18,6 +18,7 @@ type Result = {
 type CardInput = { rank: string; suit: string };
 
 const ranks = ['2', '3', '4', '5', '6', '7', '8', '9', 'T', 'J', 'Q', 'K', 'A'];
+const rankOptions = ['', ...ranks];
 const suits = ['h', 'd', 'c', 's'];
 const suitLabels: Record<string, string> = { h: '♥️', d: '♦️', c: '♣️', s: '♠️' };
 const rankValue: Record<string, number> = { '2': 2, '3': 3, '4': 4, '5': 5, '6': 6, '7': 7, '8': 8, '9': 9, T: 10, J: 11, Q: 12, K: 13, A: 14 };
@@ -361,9 +362,13 @@ const App = () => {
     { rank: 'A', suit: 'h' },
     { rank: 'K', suit: 'd' },
   ]);
-  const [boardInput, setBoardInput] = useState<CardInput[]>(
-    Array.from({ length: 5 }, () => ({ rank: '', suit: '' }))
-  );
+  const [boardInput, setBoardInput] = useState<CardInput[]>([
+    { rank: '', suit: 'h' },  // Flop1 红桃
+    { rank: '', suit: 's' },  // Flop2 黑桃
+    { rank: '', suit: 'c' },  // Flop3 梅花
+    { rank: '', suit: 's' },  // Turn 黑桃
+    { rank: '', suit: 's' },  // River 黑桃
+  ]);
   const [playerCount, setPlayerCount] = useState(4);
 
   const heroCards = heroInput.map((card) => buildCard(card.rank, card.suit));
@@ -374,7 +379,8 @@ const App = () => {
   const usedCards = [...heroCards.filter(Boolean) as Card[], ...boardCards.filter(Boolean) as Card[]];
   const hasDuplicates = usedCards.length !== new Set(usedCards.map((card) => card.code)).size;
   const validPlayerCount = Number.isInteger(playerCount) && playerCount >= 2 && playerCount <= 9;
-  const inputValid = heroValid && boardValid && !hasDuplicates && validPlayerCount;
+  // Allow partial/empty board entries: filter invalid board cards at compute-time instead of blocking input
+  const inputValid = heroValid && !hasDuplicates && validPlayerCount;
 
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
@@ -445,13 +451,33 @@ const App = () => {
 
   const updateHero = (index: number, field: keyof CardInput, value: string) => {
     const next = [...heroInput];
-    next[index] = { ...next[index], [field]: value };
+    if (field === 'rank') {
+      let v = value.trim().toUpperCase();
+      if (v === '10') v = 'T';
+      if (!rankValue[v]) v = '';
+      next[index] = { ...next[index], rank: v };
+    } else if (field === 'suit') {
+      const s = value.trim().toLowerCase();
+      next[index] = { ...next[index], suit: suits.includes(s) ? s : '' };
+    } else {
+      next[index] = { ...next[index], [field]: value };
+    }
     setHeroInput(next);
   };
 
   const updateBoard = (index: number, field: keyof CardInput, value: string) => {
     const next = [...boardInput];
-    next[index] = { ...next[index], [field]: value };
+    if (field === 'rank') {
+      let v = value.trim().toUpperCase();
+      if (v === '10') v = 'T';
+      if (!rankValue[v]) v = '';
+      next[index] = { ...next[index], rank: v };
+    } else if (field === 'suit') {
+      const s = value.trim().toLowerCase();
+      next[index] = { ...next[index], suit: suits.includes(s) ? s : '' };
+    } else {
+      next[index] = { ...next[index], [field]: value };
+    }
     setBoardInput(next);
   };
 
@@ -460,16 +486,20 @@ const App = () => {
       { rank: 'A', suit: 'h' },
       { rank: 'K', suit: 'd' },
     ]);
-    setBoardInput(Array.from({ length: 5 }, () => ({ rank: '', suit: '' })));
-    setPlayerCount(4);
+    setBoardInput([
+      { rank: '', suit: 'h' },  // Flop1 红桃
+      { rank: '', suit: 's' },  // Flop2 黑桃
+      { rank: '', suit: 'c' },  // Flop3 梅花
+      { rank: '', suit: 's' },  // Turn 黑桃
+      { rank: '', suit: 's' },  // River 黑桃
+    ]);
+    // setPlayerCount(4);
   };
 
   const invalidMessage = playerCount < 2
     ? '请先输入 2-9 人的牌桌人数。'
     : hasDuplicates
     ? '检测到重复牌，请检查输入。'
-    : hasPartialBoard
-    ? '公共牌请选择完整的花色与牌面，或保留为空。'
     : !heroValid
     ? '请先选择两张手牌。'
     : '';
@@ -492,15 +522,17 @@ const App = () => {
 
       <div className="main-layout">
         <section className="player-count-panel">
-          <input
+          <label htmlFor="player-count">桌上人数</label>
+          <select
+            id="player-count"
             className="player-count-input"
-            type="number"
-            min={2}
-            max={9}
-            value={playerCount || ''}
+            value={playerCount}
             onChange={(e) => setPlayerCount(Number(e.target.value))}
-            placeholder="桌上人数 (2-9)"
-          />
+          >
+            {Array.from({ length: 8 }, (_, index) => index + 2).map((count) => (
+              <option key={count} value={count}>{count} 人</option>
+            ))}
+          </select>
         </section>
 
         <section className="high-hands-panel">
@@ -519,7 +551,6 @@ const App = () => {
 
         <section className="card-inputs">
           <div className="input-group">
-            <h2>手牌</h2>
             <div className="card-grid">
               {heroInput.map((card, index) => (
                 <label key={index}>
@@ -539,12 +570,18 @@ const App = () => {
                         </label>
                       ))}
                     </div>
-                    <input
-                      value={card.rank}
-                      onChange={(event) => updateHero(index, 'rank', event.target.value)}
-                      placeholder="输入牌号，例如 10 或 A"
-                      maxLength={2}
-                    />
+                    <div className="rank-buttons">
+                      {ranks.map((rank) => (
+                        <button
+                          key={rank}
+                          type="button"
+                          className={`rank-btn ${card.rank === rank ? 'active' : ''}`}
+                          onClick={() => updateHero(index, 'rank', rank)}
+                        >
+                          {rank}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </label>
               ))}
@@ -552,10 +589,8 @@ const App = () => {
           </div>
 
           <div className="input-group">
-            <h2>公共牌</h2>
             <div className="board-group">
               <div>
-                <h3>Flop</h3>
                 <div className="card-grid">
                   {boardInput.slice(0, 3).map((card, index) => (
                     <label key={index}>
@@ -575,12 +610,26 @@ const App = () => {
                             </label>
                           ))}
                         </div>
-                        <input
-                          value={card.rank}
-                          onChange={(event) => updateBoard(index, 'rank', event.target.value)}
-                          placeholder="输入牌号，例如 10 或 A"
-                          maxLength={2}
-                        />
+                        <div className="rank-buttons">
+                          <button
+                            key="clear"
+                            type="button"
+                            className={`rank-btn ${card.rank === '' ? 'active' : ''}`}
+                            onClick={() => updateBoard(index, 'rank', '')}
+                          >
+                            清
+                          </button>
+                          {ranks.map((rank) => (
+                            <button
+                              key={rank}
+                              type="button"
+                              className={`rank-btn ${card.rank === rank ? 'active' : ''}`}
+                              onClick={() => updateBoard(index, 'rank', rank)}
+                            >
+                              {rank}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </label>
                   ))}
@@ -588,7 +637,6 @@ const App = () => {
               </div>
 
               <div>
-                <h3>Turn / River</h3>
                 <div className="card-grid">
                   {boardInput.slice(3).map((card, index) => (
                     <label key={index + 3}>
@@ -608,12 +656,26 @@ const App = () => {
                             </label>
                           ))}
                         </div>
-                        <input
-                          value={card.rank}
-                          onChange={(event) => updateBoard(index + 3, 'rank', event.target.value)}
-                          placeholder="输入牌号，例如 10 或 A"
-                          maxLength={2}
-                        />
+                        <div className="rank-buttons">
+                          <button
+                            key="clear"
+                            type="button"
+                            className={`rank-btn ${card.rank === '' ? 'active' : ''}`}
+                            onClick={() => updateBoard(index + 3, 'rank', '')}
+                          >
+                            清
+                          </button>
+                          {ranks.map((rank) => (
+                            <button
+                              key={rank}
+                              type="button"
+                              className={`rank-btn ${card.rank === rank ? 'active' : ''}`}
+                              onClick={() => updateBoard(index + 3, 'rank', rank)}
+                            >
+                              {rank}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     </label>
                   ))}
@@ -629,6 +691,9 @@ const App = () => {
           <div className="hints">
             <p>先选择花色，再输入牌号。10 可直接输入“10”，其余牌号为 A/K/Q/J/T/2-9。</p>
             {invalidMessage && <p className="error">{invalidMessage}</p>}
+            {hasPartialBoard && !invalidMessage && (
+              <p>注意：部分公共牌未填写，计算时会自动忽略无效条目。</p>
+            )}
           </div>
         </section>
 
