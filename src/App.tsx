@@ -233,127 +233,7 @@ const scoreBestHand = (cards: Card[]) => {
   return best;
 };
 
-const sampleRate = 2000;
-
-const calculateResult = (hero: Card[], board: Card[], playerCount: number): Result => {
-  const used = [...hero, ...board];
-  const deck = buildDeck(used);
-  const boardCount = board.length;
-  const opponentCount = Math.max(1, playerCount - 1);
-  const result: Result = {
-    wins: 0,
-    ties: 0,
-    losses: 0,
-    total: 0,
-    winRate: 0,
-    tieRate: 0,
-    lossRate: 0,
-    categoryCounts: {
-      0: 0,
-      1: 0,
-      2: 0,
-      3: 0,
-      4: 0,
-      5: 0,
-      6: 0,
-      7: 0,
-      8: 0,
-    },
-    categoryProbabilities: {
-      0: 0,
-      1: 0,
-      2: 0,
-      3: 0,
-      4: 0,
-      5: 0,
-      6: 0,
-      7: 0,
-      8: 0,
-    },
-  };
-
-  if (deck.length < 2) return result;
-
-  const evaluateBoard = (heroCards: Card[], boardCards: Card[]) => {
-    return scoreBestHand([...heroCards, ...boardCards]);
-  };
-
-  const drawOpponents = (remainingDeck: Card[]) => {
-    const opponents: Card[][] = [];
-    const deckCopy = [...remainingDeck];
-    for (let n = 0; n < opponentCount; n += 1) {
-      const hand: Card[] = [];
-      for (let k = 0; k < 2; k += 1) {
-        const index = Math.floor(Math.random() * deckCopy.length);
-        hand.push(deckCopy.splice(index, 1)[0]);
-      }
-      opponents.push(hand);
-    }
-    return opponents;
-  };
-
-  if (boardCount === 5 && opponentCount === 1) {
-    const heroCategory = getHandCategory([...hero, ...board]);
-    for (let i = 0; i < deck.length - 1; i += 1) {
-      for (let j = i + 1; j < deck.length; j += 1) {
-        const opp = [deck[i], deck[j]];
-        const heroScore = evaluateBoard(hero, board);
-        const oppScore = evaluateBoard(opp, board);
-        if (heroScore > oppScore) result.wins += 1;
-        else if (heroScore < oppScore) result.losses += 1;
-        else result.ties += 1;
-        result.total += 1;
-      }
-    }
-    result.categoryCounts[heroCategory] = result.total;
-  } else {
-    for (let i = 0; i < sampleRate; i += 1) {
-      const remainingDeck = [...deck];
-      const futureBoard: Card[] = [];
-      const needed = 5 - boardCount;
-      for (let k = 0; k < needed; k += 1) {
-        const index = Math.floor(Math.random() * remainingDeck.length);
-        futureBoard.push(remainingDeck.splice(index, 1)[0]);
-      }
-      const opponents = drawOpponents(remainingDeck);
-      const heroFullBoard = [...hero, ...board, ...futureBoard];
-      const heroScore = evaluateBoard(hero, [...board, ...futureBoard]);
-      const heroCategory = getHandCategory(heroFullBoard);
-      let oppBetter = false;
-      let oppTie = false;
-      for (const opponent of opponents) {
-        const oppScore = evaluateBoard(opponent, [...board, ...futureBoard]);
-        if (oppScore > heroScore) {
-          oppBetter = true;
-          break;
-        }
-        if (oppScore === heroScore) {
-          oppTie = true;
-        }
-      }
-      result.categoryCounts[heroCategory] += 1;
-      if (oppBetter) result.losses += 1;
-      else if (oppTie) result.ties += 1;
-      else result.wins += 1;
-      result.total += 1;
-    }
-  }
-
-  result.winRate = result.total ? Number(((result.wins / result.total) * 100).toFixed(1)) : 0;
-  result.tieRate = result.total ? Number(((result.ties / result.total) * 100).toFixed(1)) : 0;
-  result.lossRate = result.total ? Number(((result.losses / result.total) * 100).toFixed(1)) : 0;
-
-  if (result.total) {
-    for (const category of Object.keys(result.categoryCounts)) {
-      const key = Number(category);
-      result.categoryProbabilities[key] = Number(
-        ((result.categoryCounts[key] / result.total) * 100).toFixed(1)
-      );
-    }
-  }
-
-  return result;
-};
+const sampleRate = 5000;
 
 const App = () => {
   const [selectedCards, setSelectedCards] = useState<CardInput[]>(Array.from({ length: 7 }, () => ({ rank: '', suit: '' })));
@@ -373,6 +253,7 @@ const App = () => {
   const [result, setResult] = useState<Result | null>(null);
   const [loading, setLoading] = useState(false);
   const workerRef = useRef<Worker | null>(null);
+  const lastCalcId = useRef<number | null>(null);
 
   const debouncedSelected = useDebounce(selectedCards, 250);
   const debouncedPlayerCount = useDebounce(playerCount, 250);
@@ -385,6 +266,8 @@ const App = () => {
     const w = workerRef.current;
     w.onmessage = (ev: MessageEvent) => {
       const data = ev.data;
+      // Ignore stale responses from previous calculations
+      if (data.reqId != null && data.reqId !== lastCalcId.current) return;
       if (data && data.ok) {
         setResult(data.result);
       }
@@ -399,34 +282,43 @@ const App = () => {
     };
   }, []);
 
+  // Auto-calculate when selections change
   useEffect(() => {
+    if (!workerRef.current) return;
     const heroCardsToSend = debouncedSelected.slice(0, 2).map((c) => buildCard(c.rank, c.suit)).filter(Boolean) as Card[];
     const boardCardsToSend = debouncedSelected.slice(2).map((c) => buildCard(c.rank, c.suit)).filter(Boolean) as Card[];
-    const valid = heroCardsToSend.length === 2 && Number.isInteger(debouncedPlayerCount) && debouncedPlayerCount >= 2 && debouncedPlayerCount <= 9;
-    if (!valid) {
+    if (heroCardsToSend.length !== 2 || !validPlayerCount) {
       setResult(null);
       setLoading(false);
       return;
     }
-
-    if (workerRef.current) {
-      setLoading(true);
-      workerRef.current.postMessage({ hero: heroCardsToSend, board: boardCardsToSend, playerCount: debouncedPlayerCount, sampleRate: 2000 });
-    } else {
-      // fallback to synchronous (rare)
-      setLoading(true);
-      setTimeout(() => {
-        try {
-          const res = calculateResult(heroCardsToSend, boardCardsToSend, debouncedPlayerCount);
-          setResult(res);
-        } catch (e) {
-          setResult(null);
-        } finally {
-          setLoading(false);
-        }
-      }, 0);
-    }
+    lastCalcId.current = performance.now();
+    setLoading(true);
+    workerRef.current.postMessage({
+      hero: heroCardsToSend,
+      board: boardCardsToSend,
+      playerCount,
+      sampleRate,
+      reqId: lastCalcId.current,
+    });
   }, [debouncedSelected, debouncedPlayerCount]);
+
+  const handleCalculate = () => {
+    if (!workerRef.current) return;
+    const heroCardsToSend = selectedCards.slice(0, 2).map((c) => buildCard(c.rank, c.suit)).filter(Boolean) as Card[];
+    const boardCardsToSend = selectedCards.slice(2).map((c) => buildCard(c.rank, c.suit)).filter(Boolean) as Card[];
+    if (heroCardsToSend.length !== 2 || !validPlayerCount) return;
+
+    lastCalcId.current = performance.now();
+    setLoading(true);
+    workerRef.current.postMessage({
+      hero: heroCardsToSend,
+      board: boardCardsToSend,
+      playerCount,
+      sampleRate,
+      reqId: lastCalcId.current,
+    });
+  };
 
   const strategy = result
     ? result.winRate >= 65
@@ -451,9 +343,10 @@ const App = () => {
   };
 
   const removeCard = (idx: number) => {
-    setSelectedCards((selected) => {
-      selected[idx] = { rank: '', suit: '' };
-      return [...selected]
+    setSelectedCards((prev) => {
+      const next = [...prev];
+      next[idx] = { rank: '', suit: '' };
+      return next;
     });
   };
 
@@ -465,8 +358,8 @@ const App = () => {
     ? '请先输入 2-9 人的牌桌人数。'
     : hasDuplicates
     ? '检测到重复牌，请检查输入。'
-    : selectedCards.length < 2
-    ? '请先至少选择两张手牌。'
+    : !heroValid
+    ? '请先选择两张手牌。'
     : '';
 
   const combinedHands = (() => {
@@ -519,13 +412,18 @@ const App = () => {
           <div className="hero-section">
             <h3>手牌</h3>
             <div className="selected-cards">
-              {selectedCards.slice(0, 2).length > 0
-                ? selectedCards.slice(0, 2).map((card, i) => (
-                    <div key={i} className="selected-card-item">
-                      <span className="selected-card-text">{suitLabels[card.suit]}{card.rank}</span>
-                      <button className="remove-btn" onClick={() => removeCard(i)}>×</button>
-                    </div>
-                  ))
+              {selectedCards.slice(0, 2).filter(c => c.rank).length > 0
+                ? selectedCards.slice(0, 2).filter(c => c.rank).map((card, i) => {
+                    const realIndex = selectedCards.findIndex(
+                      (c) => c.rank === card.rank && c.suit === card.suit
+                    );
+                    return (
+                      <div key={realIndex} className="selected-card-item">
+                        <span className="selected-card-text">{suitLabels[card.suit]}{card.rank}</span>
+                        <button className="remove-btn" onClick={() => removeCard(realIndex)}>×</button>
+                      </div>
+                    );
+                  })
                 : <div className="selected-card-item empty">空</div>
               }
             </div>
@@ -535,13 +433,18 @@ const App = () => {
           <div className="board-section">
             <h3>公共牌</h3>
             <div className="selected-cards">
-              {selectedCards.slice(2).length > 0
-                ? selectedCards.slice(2).map((card, i) => (
-                    <div key={i} className="selected-card-item">
-                      <span className="selected-card-text">{suitLabels[card.suit]}{card.rank}</span>
-                      <button className="remove-btn" onClick={() => removeCard(i + 2)}>×</button>
-                    </div>
-                  ))
+              {selectedCards.slice(2).filter(c => c.rank).length > 0
+                ? selectedCards.slice(2).filter(c => c.rank).map((card) => {
+                    const realIndex = selectedCards.findIndex(
+                      (c) => c.rank === card.rank && c.suit === card.suit
+                    );
+                    return (
+                      <div key={realIndex} className="selected-card-item">
+                        <span className="selected-card-text">{suitLabels[card.suit]}{card.rank}</span>
+                        <button className="remove-btn" onClick={() => removeCard(realIndex)}>×</button>
+                      </div>
+                    );
+                  })
                 : <div className="selected-card-item empty">空</div>
               }
             </div>
@@ -576,6 +479,9 @@ const App = () => {
           </div>
 
           <div className="actions">
+            <button type="button" onClick={handleCalculate} disabled={loading || !inputValid} style={{ marginRight: 12 }}>
+              {loading ? '计算中…' : '计算胜率'}
+            </button>
             <button type="button" onClick={resetAll}>重置</button>
           </div>
 

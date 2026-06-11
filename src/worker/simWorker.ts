@@ -17,6 +17,65 @@ const buildDeck = (used: Card[]) => {
   return deck;
 };
 
+const getHandCategory = (cards: Card[]): number => {
+  const sorted = [...cards].sort((a, b) => b.rank - a.rank);
+  const rankCounts = sorted.reduce<Record<number, number>>((acc, card) => {
+    acc[card.rank] = (acc[card.rank] || 0) + 1;
+    return acc;
+  }, {});
+  const counts = Object.entries(rankCounts)
+    .map(([rank, count]) => ({ rank: Number(rank), count }))
+    .sort((a, b) => b.count - a.count || b.rank - a.rank);
+  const isFlush = suits.some((suit) => sorted.filter((card) => card.suit === suit).length >= 5);
+  const distinctRanks = Array.from(new Set(sorted.map((card) => card.rank)));
+
+  const isStraight = (() => {
+    const allRanks = [...distinctRanks];
+    if (allRanks[0] === 14) allRanks.push(1);
+    for (let i = 0; i <= allRanks.length - 5; i += 1) {
+      if (
+        allRanks[i] - 1 === allRanks[i + 1] &&
+        allRanks[i + 1] - 1 === allRanks[i + 2] &&
+        allRanks[i + 2] - 1 === allRanks[i + 3] &&
+        allRanks[i + 3] - 1 === allRanks[i + 4]
+      ) {
+        return true;
+      }
+    }
+    return false;
+  })();
+
+  const isStraightFlush = (() => {
+    for (const suit of suits) {
+      const suited = sorted.filter((card) => card.suit === suit);
+      if (suited.length < 5) continue;
+      const suitedRanks = Array.from(new Set(suited.map((card) => card.rank)));
+      if (suitedRanks[0] === 14) suitedRanks.push(1);
+      for (let i = 0; i <= suitedRanks.length - 5; i += 1) {
+        if (
+          suitedRanks[i] - 1 === suitedRanks[i + 1] &&
+          suitedRanks[i + 1] - 1 === suitedRanks[i + 2] &&
+          suitedRanks[i + 2] - 1 === suitedRanks[i + 3] &&
+          suitedRanks[i + 3] - 1 === suitedRanks[i + 4]
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  })();
+
+  if (isStraightFlush) return 8;
+  if (counts[0].count === 4) return 7;
+  if (counts[0].count === 3 && counts[1]?.count === 2) return 6;
+  if (isFlush) return 5;
+  if (isStraight) return 4;
+  if (counts[0].count === 3) return 3;
+  if (counts[0].count === 2 && counts[1]?.count === 2) return 2;
+  if (counts[0].count === 2) return 1;
+  return 0;
+};
+
 const getHandValue = (cards: Card[]) => {
   const sorted = [...cards].sort((a, b) => b.rank - a.rank);
   const rankCounts = sorted.reduce<Record<number, number>>((acc, card) => {
@@ -166,12 +225,12 @@ const calculateResult = (hero: Card[], board: Card[], playerCount: number, sampl
   };
 
   if (boardCount === 5 && opponentCount === 1) {
-    const heroCategory = getHandValue([...hero, ...board]);
+    // Exhaustive enumeration
+    const heroCategory = getHandCategory([...hero, ...board]);
+    const heroScore = evaluateBoard(hero, board);
     for (let i = 0; i < deck.length - 1; i += 1) {
       for (let j = i + 1; j < deck.length; j += 1) {
-        const opp = [deck[i], deck[j]];
-        const heroScore = evaluateBoard(hero, board);
-        const oppScore = evaluateBoard(opp, board);
+        const oppScore = evaluateBoard([deck[i], deck[j]], board);
         if (heroScore > oppScore) result.wins += 1;
         else if (heroScore < oppScore) result.losses += 1;
         else result.ties += 1;
@@ -180,6 +239,7 @@ const calculateResult = (hero: Card[], board: Card[], playerCount: number, sampl
     }
     result.categoryCounts[heroCategory] = result.total;
   } else {
+    // Monte Carlo simulation
     for (let i = 0; i < sampleRate; i += 1) {
       const remainingDeck = [...deck];
       const futureBoard: Card[] = [];
@@ -191,7 +251,7 @@ const calculateResult = (hero: Card[], board: Card[], playerCount: number, sampl
       const opponents = drawOpponents(remainingDeck);
       const heroFullBoard = [...hero, ...board, ...futureBoard];
       const heroScore = evaluateBoard(hero, [...board, ...futureBoard]);
-      const heroCategory = getHandValue(heroFullBoard);
+      const heroCategory = getHandCategory(heroFullBoard);
       let oppBetter = false;
       let oppTie = false;
       for (const opponent of opponents) {
@@ -230,13 +290,13 @@ const calculateResult = (hero: Card[], board: Card[], playerCount: number, sampl
 
 self.onmessage = (ev: MessageEvent) => {
   try {
-    const { hero, board, playerCount, sampleRate } = ev.data;
+    const { hero, board, playerCount, sampleRate, reqId } = ev.data;
     const res = calculateResult(hero || [], board || [], playerCount || 2, sampleRate || sampleDefault);
     // post result back
     // @ts-ignore
-    self.postMessage({ ok: true, result: res });
+    self.postMessage({ ok: true, result: res, reqId });
   } catch (err: any) {
     // @ts-ignore
-    self.postMessage({ ok: false, error: err?.message || String(err) });
+    self.postMessage({ ok: false, error: err?.message || String(err), reqId });
   }
 };
