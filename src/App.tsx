@@ -356,7 +356,7 @@ const calculateResult = (hero: Card[], board: Card[], playerCount: number): Resu
 };
 
 const App = () => {
-  const [selectedCards, setSelectedCards] = useState<CardInput[]>([]);
+  const [selectedCards, setSelectedCards] = useState<CardInput[]>(Array.from({ length: 7 }, () => ({ rank: '', suit: '' })));
   const [playerCount, setPlayerCount] = useState(4);
 
   const heroCardsIn = selectedCards.slice(0, 2);
@@ -437,18 +437,28 @@ const App = () => {
     : '';
 
   const addCard = (rank: string, suit: string) => {
-    if (selectedCards.length >= 7) return;
+    if (selectedCards.filter((c) => c && c.rank).length >= 7) return;
     const already = selectedCards.some(c => c.rank === rank && c.suit === suit);
     if (already) return;
-    setSelectedCards([...selectedCards, { rank, suit }]);
+    const newSelected = [...selectedCards];
+    const idx = selectedCards.findIndex(c => !c?.rank);
+    if (idx !== -1) {
+      newSelected[idx] = { rank, suit };
+    } else {
+      newSelected.push({ rank, suit });
+    }
+    setSelectedCards(newSelected)
   };
 
   const removeCard = (idx: number) => {
-    setSelectedCards(selectedCards.filter((_, i) => i !== idx));
+    setSelectedCards((selected) => {
+      selected[idx] = { rank: '', suit: '' };
+      return [...selected]
+    });
   };
 
   const resetAll = () => {
-    setSelectedCards([]);
+    setSelectedCards(Array.from({ length: 7 }, () => ({ rank: '', suit: '' })));
     setPlayerCount(4);
   };
 
