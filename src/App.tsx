@@ -459,7 +459,6 @@ const App = () => {
 
   const resetAll = () => {
     setSelectedCards(Array.from({ length: 7 }, () => ({ rank: '', suit: '' })));
-    setPlayerCount(4);
   };
 
   const invalidMessage = playerCount < 2
