@@ -1,4 +1,4 @@
-const CACHE_NAME = 'poker-winrate-pwa-v1';
+const CACHE_NAME = 'tjqka-v1';
 const ASSETS = ['/', '/index.html', '/src/main.tsx', '/src/style.css', '/manifest.json'];
 
 self.addEventListener('install', (event) => {
