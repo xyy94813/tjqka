@@ -1,5 +1,6 @@
 const CACHE_NAME = 'tjqka-v1';
-const ASSETS = ['/', '/index.html', '/src/main.tsx', '/src/style.css', '/manifest.json'];
+const BASE_URL = '/tjqka';
+const ASSETS = ['/', '/index.html', '/src/main.tsx', '/src/style.css', '/manifest.json'].map((path) => `${BASE_URL}${path}`);
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
