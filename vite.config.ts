@@ -3,7 +3,7 @@ import react from '@vitejs/plugin-react';
 
 export default defineConfig({
   plugins: [react()],
-  base: '/holdem-helper/',
+  base: '/tjqka/',
   server: {
     port: 4173,
   },
