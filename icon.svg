@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="TJQKA icon">
+  <rect width="512" height="512" rx="96" fill="#0f172a"/>
+  <circle cx="256" cy="256" r="164" fill="#f8fafc"/>
+  <path d="M256 96 172 208h168L256 96Zm0 320 84-112H172l84 112Z" fill="#1d4ed8"/>
+  <path d="M160 168h56v176h-56zM296 168h56v176h-56z" fill="#0f766e"/>
+</svg>
